@@ -1,0 +1,9 @@
+# npm
+/node_modules/
+
+# Script Kit
+/.scripts/
+/bin/
+/db/
+/logs/
+/tmp/

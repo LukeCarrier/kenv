@@ -1,7 +1,8 @@
 // Name: Launch VS Code Project
+// Description: Launch a recently opened VS Code workspace or folder
 
 import { spawn } from "child_process";
-import { PathLike } from "fs";
+import { promises as fsp, PathLike } from "fs";
 import "path";
 import { homedir, platform } from "os";
 import { fileURLToPath } from "url";
@@ -42,5 +43,8 @@ db.get("SELECT value FROM ItemTable WHERE key = 'history.recentlyOpenedPathsList
   });
 
   const project = await arg("Open project", projects);
-  await spawn("code", [project]);
+  const rootDir = (await fsp.lstat(project)).isDirectory() ? project : path.dirname(project);
+  // This ridiculous incantation ensures the spawned process inherits the
+  // shell's environment.
+  await spawn("code", [project], { cwd: rootDir, shell: 'bash' });
 });

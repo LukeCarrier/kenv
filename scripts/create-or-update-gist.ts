@@ -16,11 +16,19 @@ type Gist = {
 const gistDb = await db("./gists.json", { defaultName: "", defaultGlob: "/*", gists: [] });
 await gistDb.read();
 
+const actions = [
+  {
+    name: "Delete",
+    description: "Delete this Gist",
+  },
+];
+
 const gistOrName = await arg({
   placeholder: "Gist name",
   input: gistDb.defaultName,
   strict: false,
   choices: gistDb.data.gists,
+  actions,
 });
 let gist: Gist;
 if (typeof gistOrName === "string") {
@@ -42,33 +50,45 @@ if (typeof gistOrName === "string") {
   gist = gistDb.data.gists.find(g => g.name === (gistOrName as Gist).name);
 }
 
-const filePaths = await glob.glob(gist.fileGlobs);
-const files = {};
-for (let filePath of filePaths) {
-  const filename = basename(filePath);
-  files[filename] = { content: await readFile(filePath, "utf-8") };
-}
-
 const octokit = new Octokit({ auth: await env("GITHUB_SCRIPTKIT_TOKEN") });
 const headers = {
   "X-GitHub-Api-Version": "2022-11-28",
 };
-let result;
-if (gist.gistId) {
-  result = await octokit.request("PATCH /gists/{gist_id}", {
+
+if (flag?.Delete) {
+  gistDb.data.gists = gistDb.data.gists.filter(g => g !== gist);
+  await gistDb.write();
+  await octokit.request("DELETE /gists/{gist_id}", {
     gist_id: gist.gistId,
-    files,
     headers,
+  }).catch(() => {
+    log(`GitHub Gist ${gist.gistId} may have already been deleted`);
   });
 } else {
-  result = await octokit.request("POST /gists", {
-    description: gist.name,
-    public: false,
-    files,
-    headers,
-  });
-  gist.gistId = result.data.id;
-  await gistDb.write();
-}
+  const filePaths = await glob.glob(gist.fileGlobs);
+  const files = {};
+  for (let filePath of filePaths) {
+    const filename = basename(filePath);
+    files[filename] = { content: await readFile(filePath, "utf-8") };
+  }
 
-clipboard.writeText(result.data.html_url);
+  let result;
+  if (gist.gistId) {
+    result = await octokit.request("PATCH /gists/{gist_id}", {
+      gist_id: gist.gistId,
+      files,
+      headers,
+    });
+  } else {
+    result = await octokit.request("POST /gists", {
+      description: gist.name,
+      public: false,
+      files,
+      headers,
+    });
+    gist.gistId = result.data.id;
+    await gistDb.write();
+  }
+
+  clipboard.writeText(result.data.html_url);
+}
